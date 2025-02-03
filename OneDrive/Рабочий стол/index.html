@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Прайс-чекер</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: white;
+            color: black;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+            padding: 20px;
+        }
+        input, button {
+            width: 80%;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 18px;
+        }
+        button {
+            background-color: orange;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: darkorange;
+        }
+        .result {
+            font-size: 20px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Интерактивный терминал</h1>
+        <input type="text" id="search" placeholder="Введите название или артикул товара">
+        <button onclick="checkPrice()">Проверить наличие и цену</button>
+        <button onclick="scanBarcode()">Сканировать штрих-код</button>
+        <div class="result" id="result"></div>
+        <button onclick="callConsultant()">Вызвать консультанта</button>
+        <button onclick="rateService()">Оценить сервис (CSAT)</button>
+    </div>
+
+    <script>
+        function checkPrice() {
+            let query = document.getElementById('search').value.toLowerCase();
+            if (query === "дайсон") {
+                document.getElementById('result').innerHTML = "Цена: 13590 руб.<br>Наличие: на складе";
+            } else if (query) {
+                document.getElementById('result').innerHTML = "Цена: 4999 руб.<br>Наличие: В наличии";
+            } else {
+                document.getElementById('result').innerHTML = "Введите название или артикул товара.";
+            }
+        }
+        
+        function scanBarcode() {
+            alert("Функция сканирования штрих-кода в разработке.");
+        }
+        
+        function callConsultant() {
+            alert("Консультант уже направляется к вам!");
+        }
+        
+        function rateService() {
+            let rating = prompt("Оцените сервис от 1 до 5 звёзд:");
+            if (rating >= 1 && rating <= 5) {
+                alert("Спасибо за вашу оценку!");
+            } else {
+                alert("Пожалуйста, введите число от 1 до 5.");
+            }
+        }
+    </script>
+</body>
+</html>
