@@ -1,0 +1,386 @@
+(() => {
+  'use strict';
+
+  const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+  const puzzle = window.PUZZLE || { text: '', answers: {} };
+
+  const el = (id) => document.getElementById(id);
+  const puzzleEl = el('puzzle');
+  const sheetEl = el('solver');
+  const clueEl = el('clue');
+  const answerEl = el('answer');
+  const feedbackEl = el('feedback');
+  const hintTextEl = el('hintText');
+  const hint1El = el('hint1');
+  const hint2El = el('hint2');
+  const scoreEl = el('score');
+  const timerEl = el('timer');
+  const logSectionEl = el('logSection');
+  const logEl = el('log');
+  const toastEl = el('toast');
+  const completeEl = el('complete');
+
+  let tree = [];
+  let nodesByPath = new Map();
+  let order = [];
+  let solved = new Map();
+  let hintLevel = new Map();
+  let score = 100;
+  let selected = null;
+  let toastTimer = null;
+  let elapsedMs = 0;
+  let startedAt = null;
+  let timerTick = null;
+  let finished = false;
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function normalize(value) {
+    return String(value).trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
+  }
+
+  function parseBrackets(text) {
+    const root = [];
+    const stack = [{ nodes: root, path: '' }];
+    const source = String(text);
+
+    const append = (value) => {
+      const current = stack[stack.length - 1];
+      const last = current.nodes[current.nodes.length - 1];
+      if (last && last.type === 'text') last.text += value;
+      else current.nodes.push({ type: 'text', text: value });
+    };
+
+    for (let i = 0; i < source.length; i++) {
+      const ch = source[i];
+
+      if (ch === '\\' && (source[i + 1] === '[' || source[i + 1] === ']')) {
+        append(source[i + 1]);
+        i++;
+        continue;
+      }
+
+      const current = stack[stack.length - 1];
+      if (ch === '[') {
+        const index = current.nodes.filter((node) => node.type === 'bracket').length;
+        const path = current.path ? current.path + '.' + index : String(index);
+        const node = { type: 'bracket', path, children: [] };
+        current.nodes.push(node);
+        stack.push({ nodes: node.children, path });
+      } else if (ch === ']') {
+        if (stack.length > 1) stack.pop();
+      } else {
+        append(ch);
+      }
+    }
+
+    return root;
+  }
+
+  function indexBrackets(nodes) {
+    nodes.forEach((node) => {
+      if (node.type !== 'bracket') return;
+      nodesByPath.set(node.path, node);
+      order.push(node.path);
+      indexBrackets(node.children);
+    });
+  }
+
+  function hasUnsolved(node) {
+    return node.children.some((child) => child.type === 'bracket' && !solved.has(child.path));
+  }
+
+  function firstLeaf(path) {
+    const node = nodesByPath.get(path);
+    if (!node) return null;
+    if (!hasUnsolved(node)) return path;
+    for (const child of node.children) {
+      if (child.type === 'bracket' && !solved.has(child.path)) {
+        const leaf = firstLeaf(child.path);
+        if (leaf) return leaf;
+      }
+    }
+    return null;
+  }
+
+  function renderNodes(nodes) {
+    return nodes.map((node) => {
+      if (node.type === 'text') return escapeHtml(node.text);
+
+      if (solved.has(node.path)) {
+        return '<span class="answer-inline">' + escapeHtml(solved.get(node.path)) + '</span>';
+      }
+
+      const state = hasUnsolved(node) ? 'locked' : 'open';
+      const active = selected === node.path ? ' selected' : '';
+      const inner = renderNodes(node.children);
+      return '<span role="button" tabindex="0" class="clue ' + state + active +
+        '" data-path="' + escapeHtml(node.path) + '">' + inner + '</span>';
+    }).join('');
+  }
+
+  function plainText(nodes) {
+    return nodes.map((node) => {
+      if (node.type === 'text') return node.text;
+      if (solved.has(node.path)) return solved.get(node.path);
+      return plainText(node.children);
+    }).join('');
+  }
+
+  function entryFor(path) {
+    return (puzzle.answers || {})[path] || {};
+  }
+
+  function acceptedFor(path) {
+    const accepted = entryFor(path).accepted;
+    return Array.isArray(accepted) ? accepted : [];
+  }
+
+  function renderPuzzle() {
+    puzzleEl.innerHTML = renderNodes(tree);
+  }
+
+  function updateScore() {
+    scoreEl.textContent = String(score);
+  }
+
+  function formatTime(ms) {
+    const total = Math.floor(ms / 1000);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const seconds = total % 60;
+    const clock = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+    return hours ? hours + ':' + clock : clock;
+  }
+
+  function currentElapsed() {
+    return elapsedMs + (startedAt === null ? 0 : Date.now() - startedAt);
+  }
+
+  function renderTimer() {
+    timerEl.textContent = formatTime(currentElapsed());
+  }
+
+  function startTimer() {
+    if (finished || startedAt !== null) return;
+    startedAt = Date.now();
+    if (!timerTick) timerTick = setInterval(renderTimer, 500);
+    renderTimer();
+  }
+
+  function stopTimer() {
+    if (startedAt !== null) {
+      elapsedMs += Date.now() - startedAt;
+      startedAt = null;
+    }
+    if (timerTick) {
+      clearInterval(timerTick);
+      timerTick = null;
+    }
+    renderTimer();
+    return elapsedMs;
+  }
+
+  function addLog(clue, answer) {
+    logSectionEl.hidden = false;
+
+    const item = document.createElement('li');
+    item.className = 'log-item';
+
+    const clueNode = document.createElement('span');
+    clueNode.className = 'log-clue';
+    clueNode.textContent = String(clue).replace(/\s+/g, ' ').trim();
+
+    const answerNode = document.createElement('span');
+    answerNode.className = 'log-answer';
+    answerNode.textContent = answer;
+
+    item.append(clueNode, answerNode);
+    logEl.prepend(item);
+  }
+
+  function haptic(kind) {
+    if (!tg || !tg.HapticFeedback) return;
+    try {
+      if (kind === 'success') tg.HapticFeedback.notificationOccurred('success');
+      if (kind === 'error') tg.HapticFeedback.notificationOccurred('error');
+    } catch (_) { /* ignore */ }
+  }
+
+  function toast(message) {
+    toastEl.textContent = message;
+    toastEl.hidden = false;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, 1800);
+  }
+
+  function updateHint() {
+    const level = hintLevel.get(selected, 0);
+    const entry = entryFor(selected);
+    const accepted = acceptedFor(selected);
+    const first = entry.first || (accepted.length ? accepted[0].charAt(0) : '');
+    const full = entry.full || (accepted.length ? accepted[0] : '');
+
+    hint1El.disabled = level >= 1;
+    hint2El.disabled = level < 1 || level >= 2;
+    hintTextEl.textContent = level === 1
+      ? 'Первая буква: ' + String(first).charAt(0)
+      : level >= 2 ? 'Ответ: ' + full : '';
+  }
+
+  function openSolver(path) {
+    const node = nodesByPath.get(path);
+    if (!node) return;
+
+    selected = path;
+    clueEl.innerHTML = renderNodes(node.children);
+    answerEl.value = '';
+    answerEl.classList.remove('shake');
+    feedbackEl.textContent = '';
+    feedbackEl.classList.remove('error');
+    sheetEl.hidden = false;
+    updateHint();
+    renderPuzzle();
+
+    if (tg && tg.MainButton) {
+      tg.MainButton.setText('Ответить');
+      tg.MainButton.enable();
+      tg.MainButton.show();
+    } else {
+      setTimeout(() => answerEl.focus(), 50);
+    }
+  }
+
+  function closeSolver() {
+    sheetEl.hidden = true;
+    if (tg && tg.MainButton) tg.MainButton.hide();
+  }
+
+  function useHint(level) {
+    if (!selected) return;
+    const accepted = acceptedFor(selected);
+    if (!accepted.length) return;
+    if (hintLevel.get(selected, 0) >= level) return;
+
+    hintLevel.set(selected, level);
+    score = Math.max(0, score - (level === 1 ? 10 : 25));
+    updateScore();
+    updateHint();
+    haptic('error');
+
+    if (level === 2) {
+      answerEl.value = entryFor(selected).full || accepted[0];
+      checkAnswer();
+    }
+  }
+
+  function checkAnswer() {
+    if (!selected) return;
+
+    const value = normalize(answerEl.value);
+    if (!value) return;
+
+    const entry = entryFor(selected);
+    const accepted = acceptedFor(selected).concat(entry.full ? [entry.full] : []);
+    if (accepted.some((item) => normalize(item) === value)) {
+      const shown = entry.full || accepted[0];
+      const node = nodesByPath.get(selected);
+      const clue = node ? plainText(node.children) : '';
+      solved.set(selected, shown);
+      addLog(clue, shown);
+      haptic('success');
+
+      selected = null;
+      answerEl.value = '';
+      closeSolver();
+      renderPuzzle();
+
+      if (order.every((path) => solved.has(path))) finish();
+      return;
+    }
+
+    score = Math.max(0, score - 5);
+    updateScore();
+    haptic('error');
+    feedbackEl.textContent = 'Неверно · −5';
+    feedbackEl.classList.add('error');
+    answerEl.classList.remove('shake');
+    void answerEl.offsetWidth;
+    answerEl.classList.add('shake');
+  }
+
+  function finish() {
+    const time = stopTimer();
+    finished = true;
+    const revealed = puzzle.resultText || plainText(tree).replace(/\s+/g, ' ').trim();
+    el('finishText').textContent = revealed;
+    el('finishScore').textContent = String(score);
+    el('finishTime').textContent = formatTime(time);
+    completeEl.hidden = false;
+    if (tg && tg.MainButton) tg.MainButton.hide();
+    haptic('success');
+  }
+
+  function initTelegram() {
+    if (!tg) return;
+    document.body.classList.add('in-telegram');
+    tg.ready();
+    tg.expand();
+    try {
+      tg.setHeaderColor('#D5F0FF');
+      tg.setBackgroundColor('#D5F0FF');
+    } catch (_) { /* ignore */ }
+    if (tg.MainButton) tg.MainButton.onClick(checkAnswer);
+  }
+
+  puzzleEl.addEventListener('click', (event) => {
+    const target = event.target.closest('.clue[data-path]');
+    if (!target) return;
+    const path = firstLeaf(target.dataset.path);
+    if (path) openSolver(path);
+    else toast('Все вложенные загадки уже решены');
+  });
+
+  puzzleEl.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const target = event.target.closest('.clue[data-path]');
+    if (!target) return;
+    event.preventDefault();
+    const path = firstLeaf(target.dataset.path);
+    if (path) openSolver(path);
+  });
+
+  el('form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    checkAnswer();
+  });
+
+  el('close').addEventListener('click', () => {
+    selected = null;
+    closeSolver();
+    renderPuzzle();
+  });
+
+  hint1El.addEventListener('click', () => useHint(1));
+  hint2El.addEventListener('click', () => useHint(2));
+  el('again').addEventListener('click', () => location.reload());
+
+  document.addEventListener('visibilitychange', () => {
+    if (finished) return;
+    if (document.hidden) stopTimer();
+    else startTimer();
+  });
+
+  tree = parseBrackets(puzzle.text);
+  indexBrackets(tree);
+  renderPuzzle();
+  updateScore();
+  startTimer();
+  initTelegram();
+})();
