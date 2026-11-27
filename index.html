@@ -20,36 +20,35 @@
       </div>
     </header>
 
+    <section class="composer" id="composer" aria-label="Окно ввода ответов">
+      <div class="composer-head">
+        <span class="progress" id="progress">0 / 0</span>
+      </div>
+      <div class="clue-preview" id="clue"></div>
+      <div class="hint-row">
+        <button id="hint1" class="hint-btn" type="button">Буква −10</button>
+        <button id="hint2" class="hint-btn" type="button">Слово −25</button>
+      </div>
+      <div class="hint-text" id="hintText" aria-live="polite"></div>
+      <p class="penalty-note">Неверный ответ: −5 баллов</p>
+      <form id="form">
+        <input id="answer" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Ответ на любую загадку">
+        <button id="submit" class="primary" type="submit">Ответить</button>
+      </form>
+      <div class="feedback" id="feedback" aria-live="polite"></div>
+    </section>
+
     <main>
       <p class="lead">Решай внутренние загадки — их ответы прояснят внешние.</p>
       <section class="card">
         <div class="puzzle" id="puzzle"></div>
       </section>
-      <p class="tip">Нажми на загадку, чтобы ввести ответ. Неверный ответ — −5 баллов. Первая подсказка показывает букву, вторая — слово целиком.</p>
+      <p class="tip">Вводи любой ответ сверху — приложение само найдёт нужную загадку. Нажатие на загадку нужно только для подсказок.</p>
       <section class="log" id="logSection" hidden>
-        <h2>Что открыл</h2>
+        <h2>Уже открыто</h2>
         <ol class="log-list" id="log"></ol>
       </section>
     </main>
-  </div>
-
-  <div class="sheet" id="solver" hidden>
-    <div class="sheet-head">
-      <span class="sheet-title">Ответ для загадки</span>
-      <button id="close" class="icon-btn" type="button" aria-label="Закрыть">&times;</button>
-    </div>
-    <div class="clue-preview" id="clue"></div>
-    <div class="hint-row">
-      <button id="hint1" class="hint-btn" type="button">Буква &middot; −10</button>
-      <button id="hint2" class="hint-btn" type="button">Слово &middot; −25</button>
-    </div>
-    <div class="hint-text" id="hintText" aria-live="polite"></div>
-    <p class="penalty-note">Неверный ответ: −5 баллов</p>
-    <form id="form">
-      <input id="answer" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Твой ответ">
-      <button id="submit" class="primary" type="submit">Ответить</button>
-    </form>
-    <div class="feedback" id="feedback" aria-live="polite"></div>
   </div>
 
   <div class="toast" id="toast" hidden></div>

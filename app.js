@@ -6,7 +6,7 @@
 
   const el = (id) => document.getElementById(id);
   const puzzleEl = el('puzzle');
-  const sheetEl = el('solver');
+  const progressEl = el('progress');
   const clueEl = el('clue');
   const answerEl = el('answer');
   const feedbackEl = el('feedback');
@@ -109,6 +109,17 @@
     return null;
   }
 
+  function nextAvailable() {
+    return order.find((path) => {
+      const node = nodesByPath.get(path);
+      return node && !solved.has(path) && !hasUnsolved(node);
+    }) || null;
+  }
+
+  function updateProgress() {
+    progressEl.textContent = solved.size + ' / ' + order.length;
+  }
+
   function renderNodes(nodes) {
     return nodes.map((node) => {
       if (node.type === 'text') return escapeHtml(node.text);
@@ -140,6 +151,30 @@
   function acceptedFor(path) {
     const accepted = entryFor(path).accepted;
     return Array.isArray(accepted) ? accepted : [];
+  }
+
+  function answerMatches(path, value) {
+    const entry = entryFor(path);
+    const accepted = acceptedFor(path).concat(entry.full ? [entry.full] : []);
+    return accepted.some((item) => normalize(item) === value);
+  }
+
+  function findAvailableMatch(value) {
+    return order.find((path) => {
+      const node = nodesByPath.get(path);
+      return node && !solved.has(path) && !hasUnsolved(node) && answerMatches(path, value);
+    }) || null;
+  }
+
+  function findLockedMatch(value) {
+    return order.find((path) => {
+      const node = nodesByPath.get(path);
+      return node && !solved.has(path) && hasUnsolved(node) && answerMatches(path, value);
+    }) || null;
+  }
+
+  function findSolvedMatch(value) {
+    return order.find((path) => solved.has(path) && answerMatches(path, value)) || null;
   }
 
   function renderPuzzle() {
@@ -234,7 +269,7 @@
       : level >= 2 ? 'Ответ: ' + full : '';
   }
 
-  function openSolver(path) {
+  function selectClue(path) {
     const node = nodesByPath.get(path);
     if (!node) return;
 
@@ -244,7 +279,6 @@
     answerEl.classList.remove('shake');
     feedbackEl.textContent = '';
     feedbackEl.classList.remove('error');
-    sheetEl.hidden = false;
     updateHint();
     renderPuzzle();
 
@@ -255,11 +289,6 @@
     } else {
       setTimeout(() => answerEl.focus(), 50);
     }
-  }
-
-  function closeSolver() {
-    sheetEl.hidden = true;
-    if (tg && tg.MainButton) tg.MainButton.hide();
   }
 
   function useHint(level) {
@@ -280,39 +309,67 @@
     }
   }
 
-  function checkAnswer() {
-    if (!selected) return;
+  function solvePath(path) {
+    const entry = entryFor(path);
+    const accepted = acceptedFor(path).concat(entry.full ? [entry.full] : []);
+    const shown = entry.full || accepted[0];
+    const node = nodesByPath.get(path);
+    const clue = node ? plainText(node.children) : '';
+    solved.set(path, shown);
+    addLog(clue, shown);
+    haptic('success');
 
+    selected = null;
+    answerEl.value = '';
+    renderPuzzle();
+    updateProgress();
+
+    const dot = path.lastIndexOf('.');
+    const parentPath = dot === -1 ? null : path.slice(0, dot);
+    const parentNode = parentPath ? nodesByPath.get(parentPath) : null;
+    const unlockedParent = parentNode && !solved.has(parentPath) && !hasUnsolved(parentNode)
+      ? parentPath
+      : null;
+    const next = unlockedParent || nextAvailable();
+    if (next) selectClue(next);
+    else if (order.every((item) => solved.has(item))) finish();
+  }
+
+  function markInvalid(message) {
+    feedbackEl.textContent = message;
+    feedbackEl.classList.add('error');
+    answerEl.classList.remove('shake');
+    void answerEl.offsetWidth;
+    answerEl.classList.add('shake');
+  }
+
+  function checkAnswer() {
     const value = normalize(answerEl.value);
     if (!value) return;
 
-    const entry = entryFor(selected);
-    const accepted = acceptedFor(selected).concat(entry.full ? [entry.full] : []);
-    if (accepted.some((item) => normalize(item) === value)) {
-      const shown = entry.full || accepted[0];
-      const node = nodesByPath.get(selected);
-      const clue = node ? plainText(node.children) : '';
-      solved.set(selected, shown);
-      addLog(clue, shown);
-      haptic('success');
+    const available = findAvailableMatch(value);
+    if (available) {
+      solvePath(available);
+      return;
+    }
 
-      selected = null;
-      answerEl.value = '';
-      closeSolver();
-      renderPuzzle();
+    if (findSolvedMatch(value)) {
+      markInvalid('Эта загадка уже решена');
+      return;
+    }
 
-      if (order.every((path) => solved.has(path))) finish();
+    const locked = findLockedMatch(value);
+    if (locked) {
+      const leaf = firstLeaf(locked);
+      if (leaf) selectClue(leaf);
+      markInvalid('Сначала реши внутренние загадки');
       return;
     }
 
     score = Math.max(0, score - 5);
     updateScore();
     haptic('error');
-    feedbackEl.textContent = 'Неверно · −5';
-    feedbackEl.classList.add('error');
-    answerEl.classList.remove('shake');
-    void answerEl.offsetWidth;
-    answerEl.classList.add('shake');
+    markInvalid('Неверно · −5');
   }
 
   function finish() {
@@ -327,23 +384,35 @@
     haptic('success');
   }
 
+  function themeColor(name, fallback) {
+    const value = tg && tg.themeParams ? tg.themeParams[name] : null;
+    return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+  }
+
   function initTelegram() {
     if (!tg) return;
     document.body.classList.add('in-telegram');
     tg.ready();
     tg.expand();
     try {
-      tg.setHeaderColor('#D5F0FF');
-      tg.setBackgroundColor('#D5F0FF');
+      if (tg.setHeaderColor) tg.setHeaderColor(themeColor('secondary_bg_color', '#D5F0FF'));
+      if (tg.setBackgroundColor) tg.setBackgroundColor(themeColor('bg_color', '#D5F0FF'));
     } catch (_) { /* ignore */ }
-    if (tg.MainButton) tg.MainButton.onClick(checkAnswer);
+    if (tg.MainButton) {
+      if (typeof tg.MainButton.setParams === 'function') {
+        try {
+          tg.MainButton.setParams({ color: '#FF87FF', text_color: '#1B1B2A' });
+        } catch (_) { /* ignore */ }
+      }
+      tg.MainButton.onClick(checkAnswer);
+    }
   }
 
   puzzleEl.addEventListener('click', (event) => {
     const target = event.target.closest('.clue[data-path]');
     if (!target) return;
     const path = firstLeaf(target.dataset.path);
-    if (path) openSolver(path);
+    if (path) selectClue(path);
     else toast('Все вложенные загадки уже решены');
   });
 
@@ -353,18 +422,12 @@
     if (!target) return;
     event.preventDefault();
     const path = firstLeaf(target.dataset.path);
-    if (path) openSolver(path);
+    if (path) selectClue(path);
   });
 
   el('form').addEventListener('submit', (event) => {
     event.preventDefault();
     checkAnswer();
-  });
-
-  el('close').addEventListener('click', () => {
-    selected = null;
-    closeSolver();
-    renderPuzzle();
   });
 
   hint1El.addEventListener('click', () => useHint(1));
@@ -381,6 +444,8 @@
   indexBrackets(tree);
   renderPuzzle();
   updateScore();
-  startTimer();
+  updateProgress();
   initTelegram();
+  startTimer();
+  selectClue(nextAvailable());
 })();
