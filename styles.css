@@ -127,8 +127,35 @@ body {
 }
 
 .puzzle {
+  position: relative;
+  z-index: 0;
   font-size: 17px;
   line-height: 2.3;
+}
+
+.clue-extensions {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.clue-extension {
+  position: absolute;
+  border-top: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.clue-extension.locked {
+  border-color: var(--line);
+  background: #EDF7FF;
+}
+
+.answer-extension {
+  position: absolute;
+  background: var(--accent);
 }
 
 .tip {

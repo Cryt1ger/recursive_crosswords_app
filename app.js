@@ -177,8 +177,89 @@
     return order.find((path) => solved.has(path) && answerMatches(path, value)) || null;
   }
 
+  function renderExtensions() {
+    const layer = puzzleEl.querySelector('.clue-extensions');
+    if (!layer) return;
+
+    layer.textContent = '';
+    const base = puzzleEl.getBoundingClientRect();
+    const right = base.right;
+    const rows = new Map();
+    const textRects = [];
+    const walker = document.createTreeWalker(puzzleEl, NodeFilter.SHOW_TEXT);
+
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (!node.nodeValue.trim()) continue;
+      if (node.parentElement && node.parentElement.closest('.clue, .answer-inline, .clue-extensions')) continue;
+
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      Array.from(range.getClientRects()).forEach((rect) => {
+        if (rect.width > 0) textRects.push(rect);
+      });
+    }
+
+    puzzleEl.querySelectorAll('.clue, .answer-inline').forEach((target) => {
+      Array.from(target.getClientRects()).forEach((rect) => {
+        const key = Math.round(rect.top) + '|' + Math.round(rect.height);
+        if (!rows.has(key)) rows.set(key, { top: rect.top, height: rect.height, items: [] });
+        rows.get(key).items.push({ rect, target });
+      });
+    });
+
+    rows.forEach((row) => {
+      let last = row.items[0];
+      row.items.forEach((item) => {
+        if (item.rect.right >= last.rect.right) last = item;
+      });
+      if (last.rect.right >= right - 1) return;
+
+      const textAfter = textRects.some((rect) =>
+        rect.top < row.top + row.height &&
+        rect.bottom > row.top &&
+        rect.right > last.rect.right + 1
+      );
+      if (textAfter) return;
+
+      const isAnswer = last.target.classList.contains('answer-inline');
+      const locked = last.target.classList.contains('locked');
+      const extension = document.createElement('span');
+      extension.className = isAnswer
+        ? 'answer-extension'
+        : 'clue-extension' + (locked ? ' locked' : '');
+      extension.style.left = (last.rect.right - base.left - 2) + 'px';
+      extension.style.top = (row.top - base.top) + 'px';
+      extension.style.width = (right - last.rect.right + 2) + 'px';
+      extension.style.height = row.height + 'px';
+      layer.appendChild(extension);
+    });
+  }
+
+  function extentKey() {
+    const rect = puzzleEl.getBoundingClientRect();
+    return Math.round(rect.left) + ':' + Math.round(rect.right) + ':' +
+      Math.round(rect.width) + ':' + Math.round(rect.height);
+  }
+
+  let lastExtents = '';
+
+  function watchExtensions() {
+    const key = extentKey();
+    if (key !== lastExtents) {
+      lastExtents = key;
+      renderExtensions();
+    }
+    requestAnimationFrame(watchExtensions);
+  }
+
   function renderPuzzle() {
     puzzleEl.innerHTML = renderNodes(tree);
+    const layer = document.createElement('div');
+    layer.className = 'clue-extensions';
+    puzzleEl.appendChild(layer);
+    renderExtensions();
+    lastExtents = extentKey();
   }
 
   function updateScore() {
@@ -439,6 +520,8 @@
     if (document.hidden) stopTimer();
     else startTimer();
   });
+
+  requestAnimationFrame(watchExtensions);
 
   tree = parseBrackets(puzzle.text);
   indexBrackets(tree);
