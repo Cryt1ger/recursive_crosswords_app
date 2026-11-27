@@ -6,6 +6,7 @@
 
   const el = (id) => document.getElementById(id);
   const puzzleEl = el('puzzle');
+  const composerEl = el('composer');
   const progressEl = el('progress');
   const clueEl = el('clue');
   const answerEl = el('answer');
@@ -27,6 +28,7 @@
   let hintLevel = new Map();
   let score = 100;
   let selected = null;
+  let hintsAllowed = false;
   let toastTimer = null;
   let elapsedMs = 0;
   let startedAt = null;
@@ -109,13 +111,6 @@
     return null;
   }
 
-  function nextAvailable() {
-    return order.find((path) => {
-      const node = nodesByPath.get(path);
-      return node && !solved.has(path) && !hasUnsolved(node);
-    }) || null;
-  }
-
   function updateProgress() {
     progressEl.textContent = solved.size + ' / ' + order.length;
   }
@@ -183,7 +178,7 @@
 
     layer.textContent = '';
     const base = puzzleEl.getBoundingClientRect();
-    const right = base.right;
+    const right = base.left + puzzleEl.clientWidth;
     const rows = new Map();
     const textRects = [];
     const walker = document.createTreeWalker(puzzleEl, NodeFilter.SHOW_TEXT);
@@ -236,20 +231,8 @@
     });
   }
 
-  function extentKey() {
-    const rect = puzzleEl.getBoundingClientRect();
-    return Math.round(rect.left) + ':' + Math.round(rect.right) + ':' +
-      Math.round(rect.width) + ':' + Math.round(rect.height);
-  }
-
-  let lastExtents = '';
-
   function watchExtensions() {
-    const key = extentKey();
-    if (key !== lastExtents) {
-      lastExtents = key;
-      renderExtensions();
-    }
+    renderExtensions();
     requestAnimationFrame(watchExtensions);
   }
 
@@ -259,7 +242,6 @@
     layer.className = 'clue-extensions';
     puzzleEl.appendChild(layer);
     renderExtensions();
-    lastExtents = extentKey();
   }
 
   function updateScore() {
@@ -336,6 +318,35 @@
     toastTimer = setTimeout(() => { toastEl.hidden = true; }, 1800);
   }
 
+  function updateComposerState() {
+    composerEl.classList.toggle('composer--open', !!selected);
+  }
+
+  function closeComposer() {
+    selected = null;
+    hintsAllowed = false;
+    answerEl.value = '';
+    answerEl.classList.remove('shake');
+    feedbackEl.textContent = '';
+    feedbackEl.classList.remove('error');
+    clueEl.innerHTML = '';
+    updateHint();
+    updateComposerState();
+    renderPuzzle();
+  }
+
+  function activateClue(path) {
+    if (!path) {
+      toast('Все вложенные загадки уже решены');
+      return;
+    }
+    if (selected === path && composerEl.classList.contains('composer--open')) {
+      closeComposer();
+    } else {
+      selectClue(path, true);
+    }
+  }
+
   function updateHint() {
     const level = hintLevel.get(selected, 0);
     const entry = entryFor(selected);
@@ -343,24 +354,26 @@
     const first = entry.first || (accepted.length ? accepted[0].charAt(0) : '');
     const full = entry.full || (accepted.length ? accepted[0] : '');
 
-    hint1El.disabled = level >= 1;
-    hint2El.disabled = level < 1 || level >= 2;
+    hint1El.disabled = !hintsAllowed || level >= 1;
+    hint2El.disabled = !hintsAllowed || level < 1 || level >= 2;
     hintTextEl.textContent = level === 1
       ? 'Первая буква: ' + String(first).charAt(0)
       : level >= 2 ? 'Ответ: ' + full : '';
   }
 
-  function selectClue(path) {
+  function selectClue(path, allowHints = false) {
     const node = nodesByPath.get(path);
     if (!node) return;
 
     selected = path;
+    hintsAllowed = allowHints;
     clueEl.innerHTML = renderNodes(node.children);
     answerEl.value = '';
     answerEl.classList.remove('shake');
     feedbackEl.textContent = '';
     feedbackEl.classList.remove('error');
     updateHint();
+    updateComposerState();
     renderPuzzle();
 
     if (tg && tg.MainButton) {
@@ -373,7 +386,7 @@
   }
 
   function useHint(level) {
-    if (!selected) return;
+    if (!selected || !hintsAllowed) return;
     const accepted = acceptedFor(selected);
     if (!accepted.length) return;
     if (hintLevel.get(selected, 0) >= level) return;
@@ -400,23 +413,17 @@
     addLog(clue, shown);
     haptic('success');
 
-    selected = null;
-    answerEl.value = '';
-    renderPuzzle();
+    closeComposer();
     updateProgress();
 
-    const dot = path.lastIndexOf('.');
-    const parentPath = dot === -1 ? null : path.slice(0, dot);
-    const parentNode = parentPath ? nodesByPath.get(parentPath) : null;
-    const unlockedParent = parentNode && !solved.has(parentPath) && !hasUnsolved(parentNode)
-      ? parentPath
-      : null;
-    const next = unlockedParent || nextAvailable();
-    if (next) selectClue(next);
-    else if (order.every((item) => solved.has(item))) finish();
+    if (order.every((item) => solved.has(item))) finish();
   }
 
   function markInvalid(message) {
+    if (!selected) {
+      toast(message);
+      return;
+    }
     feedbackEl.textContent = message;
     feedbackEl.classList.add('error');
     answerEl.classList.remove('shake');
@@ -439,10 +446,7 @@
       return;
     }
 
-    const locked = findLockedMatch(value);
-    if (locked) {
-      const leaf = firstLeaf(locked);
-      if (leaf) selectClue(leaf);
+    if (findLockedMatch(value)) {
       markInvalid('Сначала реши внутренние загадки');
       return;
     }
@@ -485,6 +489,9 @@
           tg.MainButton.setParams({ color: '#FF87FF', text_color: '#1B1B2A' });
         } catch (_) { /* ignore */ }
       }
+      tg.MainButton.setText('Ответить');
+      tg.MainButton.enable();
+      tg.MainButton.show();
       tg.MainButton.onClick(checkAnswer);
     }
   }
@@ -492,9 +499,7 @@
   puzzleEl.addEventListener('click', (event) => {
     const target = event.target.closest('.clue[data-path]');
     if (!target) return;
-    const path = firstLeaf(target.dataset.path);
-    if (path) selectClue(path);
-    else toast('Все вложенные загадки уже решены');
+    activateClue(firstLeaf(target.dataset.path));
   });
 
   puzzleEl.addEventListener('keydown', (event) => {
@@ -502,8 +507,12 @@
     const target = event.target.closest('.clue[data-path]');
     if (!target) return;
     event.preventDefault();
-    const path = firstLeaf(target.dataset.path);
-    if (path) selectClue(path);
+    activateClue(firstLeaf(target.dataset.path));
+  });
+
+  toastEl.addEventListener('click', () => {
+    if (toastTimer) clearTimeout(toastTimer);
+    toastEl.hidden = true;
   });
 
   el('form').addEventListener('submit', (event) => {
@@ -522,6 +531,10 @@
   });
 
   requestAnimationFrame(watchExtensions);
+  window.addEventListener('resize', renderExtensions);
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(renderExtensions).observe(puzzleEl);
+  }
 
   tree = parseBrackets(puzzle.text);
   indexBrackets(tree);
@@ -530,5 +543,6 @@
   updateProgress();
   initTelegram();
   startTimer();
-  selectClue(nextAvailable());
+  updateHint();
+  updateComposerState();
 })();

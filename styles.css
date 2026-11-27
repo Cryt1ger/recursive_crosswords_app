@@ -129,8 +129,12 @@ body {
 .puzzle {
   position: relative;
   z-index: 0;
+  padding-left: 4px;
+  padding-right: 6px;
   font-size: 17px;
   line-height: 2.3;
+  text-align: justify;
+  text-justify: inter-word;
 }
 
 .clue-extensions {
@@ -252,12 +256,33 @@ body {
   position: sticky;
   top: calc(6px + env(safe-area-inset-top));
   z-index: 20;
-  margin-bottom: 18px;
-  padding: 14px 16px 16px;
+  margin-bottom: 12px;
+  padding: 10px 12px 12px;
   background: var(--surface);
   border: 2px solid var(--line);
-  border-radius: 20px;
+  border-radius: 16px;
   box-shadow: var(--shadow);
+}
+
+.composer:not(.composer--open) {
+  margin-bottom: 10px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.composer:not(.composer--open) .composer-head,
+.composer:not(.composer--open) .clue-preview,
+.composer:not(.composer--open) .hint-row,
+.composer:not(.composer--open) .hint-text,
+.composer:not(.composer--open) .feedback {
+  display: none;
+}
+
+.composer:not(.composer--open) #answer {
+  background: var(--surface);
 }
 
 .composer-head {
@@ -265,26 +290,26 @@ body {
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .progress {
-  padding: 3px 10px;
+  padding: 2px 8px;
   border-radius: 999px;
   background: var(--bg);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .clue-preview {
-  padding: 12px 14px;
-  border-radius: 14px;
+  padding: 8px 10px;
+  border-radius: 10px;
   background: var(--bg);
-  font-size: 15px;
-  line-height: 1.5;
-  margin-bottom: 12px;
+  font-size: 14px;
+  line-height: 1.35;
+  margin-bottom: 8px;
 }
 
 .clue-preview .clue {
@@ -295,17 +320,17 @@ body {
 .hint-row {
   display: flex;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .hint-btn {
   flex: 1;
-  padding: 10px 8px;
+  padding: 6px 8px;
   border: 1.5px solid var(--line);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--surface);
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -316,20 +341,14 @@ body {
 }
 
 .hint-text {
-  min-height: 20px;
-  margin-bottom: 8px;
-  font-size: 14px;
+  min-height: 18px;
+  margin-bottom: 6px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--ink);
 }
 
 .hint-text:empty { display: none; }
-
-.penalty-note {
-  margin: 0 0 8px;
-  color: var(--muted);
-  font-size: 12px;
-}
 
 #form {
   display: flex;
@@ -339,9 +358,9 @@ body {
 #answer {
   flex: 1;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 8px 12px;
   border: 2px solid var(--line);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--bg);
   color: var(--ink);
   font: inherit;
@@ -353,9 +372,9 @@ body {
 }
 
 .primary {
-  padding: 12px 18px;
+  padding: 8px 14px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--accent);
   color: var(--ink);
   font: inherit;
@@ -368,9 +387,9 @@ body {
 body.in-telegram #submit { display: none; }
 
 .feedback {
-  min-height: 18px;
-  margin-top: 8px;
-  font-size: 13px;
+  min-height: 14px;
+  margin-top: 6px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -397,6 +416,7 @@ body.in-telegram #submit { display: none; }
   font-size: 13px;
   box-shadow: var(--shadow);
   white-space: nowrap;
+  cursor: pointer;
 }
 
 .overlay {
