@@ -56,7 +56,7 @@ body {
 .app {
   max-width: 720px;
   margin: 0 auto;
-  padding: calc(14px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
+  padding: calc(10px + env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
 }
 
 .topbar {
@@ -64,7 +64,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 .brand {
@@ -223,7 +223,7 @@ body {
 
 .composer {
   position: sticky;
-  top: calc(10px + env(safe-area-inset-top));
+  top: calc(6px + env(safe-area-inset-top));
   z-index: 20;
   margin-bottom: 18px;
   padding: 14px 16px 16px;
